@@ -7,7 +7,13 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exeptions import *
+from exeptions import (
+    EnvironmentVariableNotFound,
+    EmptyHomework,
+    ResponseError,
+    UnexpectedHomeworkStatus,
+    HomeworkNameNotFound,
+)
 
 load_dotenv()
 
@@ -38,7 +44,6 @@ logger.addHandler(handler)
 
 def check_tokens():
     """Проверка токенов."""
-
     variables = {
         'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
         'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
@@ -57,7 +62,6 @@ def check_tokens():
 
 def send_message(bot, message):
     """Отправка сообщения."""
-
     try:
         logger.debug(f'Бот отправил сообщение "{message}"')
         bot.send_message(TELEGRAM_CHAT_ID, message)
@@ -67,7 +71,6 @@ def send_message(bot, message):
 
 def get_api_answer(timestamp):
     """Получение ответа API."""
-
     params = {'from_date': timestamp}
     try:
         homework_statuses = requests.get(
@@ -86,7 +89,6 @@ def get_api_answer(timestamp):
 
 def check_response(response):
     """Проверка ответа API."""
-
     if 'homeworks' not in response or 'current_date' not in response:
         raise TypeError(f'Неверный формат ответа. Ответ: {response}')
     if not response['homeworks']:
@@ -99,12 +101,11 @@ def check_response(response):
 
 def parse_status(homework):
     """Извлечение статуса домашней работы."""
-
     if "homework_name" not in homework:
         raise HomeworkNameNotFound('Не найдено название работы.')
     homework_name = homework['homework_name']
     if homework['status'] not in HOMEWORK_VERDICTS:
-        raise UnexpectedHomeworkStatus(f'Неожиданный статус домашней работы.')
+        raise UnexpectedHomeworkStatus('Неожиданный статус домашней работы.')
     verdict = HOMEWORK_VERDICTS[homework['status']]
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -112,7 +113,6 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-
     check_tokens()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
