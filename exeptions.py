@@ -2,10 +2,6 @@ class EnvironmentVariableNotFound(Exception):
     pass
 
 
-class WrongResponseFormat(Exception):
-    pass
-
-
 class EmptyHomework(Exception):
     pass
 
