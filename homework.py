@@ -15,6 +15,7 @@ from exeptions import (
     HomeworkNameNotFound,
 )
 
+
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv('API_TOKEN')
