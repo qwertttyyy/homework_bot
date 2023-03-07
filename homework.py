@@ -8,11 +8,11 @@ import telegram
 from dotenv import load_dotenv
 
 from exeptions import (
-    EnvironmentVariableNotFound,
-    EmptyHomework,
+    HomeworksNotFound,
     ResponseError,
     UnexpectedHomeworkStatus,
     HomeworkNameNotFound,
+    StatusNotFound
 )
 
 
@@ -39,8 +39,11 @@ handler = logging.StreamHandler(stream=sys.stdout)
 formatter = logging.Formatter(
     '%(asctime)s  %(levelname)s  %(message)s'
 )
+file_handler = logging.FileHandler(filename='bot_logs.log', encoding='utf-8')
+file_handler.setFormatter(formatter)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+logger.addHandler(file_handler)
 
 
 def check_tokens():
@@ -51,14 +54,16 @@ def check_tokens():
         'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
     }
 
+    token_availability = True
     for var in variables:
         if variables[var] is None:
             logger.critical(f'Отсутствует обязательная переменная '
                             f'окружения: "{var}" '
                             f'Программа принудительно остановлена.')
 
-            raise EnvironmentVariableNotFound(
-                f'Отсутствует обязательная {var}!')
+            token_availability = False
+
+    return token_availability
 
 
 def send_message(bot, message):
@@ -66,36 +71,40 @@ def send_message(bot, message):
     try:
         logger.debug(f'Бот отправил сообщение "{message}"')
         bot.send_message(TELEGRAM_CHAT_ID, message)
-    except Exception as error:
+        return True
+    except telegram.error.TelegramError as error:
         logger.error(f'Ошибка отправки сообщения: {error}')
+        return False
 
 
 def get_api_answer(timestamp):
     """Получение ответа API."""
     params = {'from_date': timestamp}
     try:
-        homework_statuses = requests.get(
+        homework_response = requests.get(
             ENDPOINT,
             headers=HEADERS,
             params=params
         )
     except requests.RequestException:
-        homework_statuses = 404
-    if homework_statuses.status_code != 200:
+        status_code = 404
         raise ResponseError(f'Эндпоинт {ENDPOINT} недоступен. '
-                            f'Код ответа: {homework_statuses.status_code}')
+                            f'Код ответа: {status_code}')
+    if homework_response.status_code != 200:
+        raise ResponseError(f'Эндпоинт {ENDPOINT} недоступен. '
+                            f'Код ответа: {homework_response.status_code}')
 
-    return homework_statuses.json()
+    return homework_response.json()
 
 
 def check_response(response):
     """Проверка ответа API."""
-    if 'homeworks' not in response or 'current_date' not in response:
-        raise TypeError(f'Неверный формат ответа. Ответ: {response}')
-    if not response['homeworks']:
-        raise EmptyHomework('Список домашних работ пуст.')
     if not isinstance(response, dict):
         raise TypeError(f'Получен {type(response)}, а ожидался словарь.')
+    if 'homeworks' not in response or 'current_date' not in response:
+        raise HomeworksNotFound(
+            f'Не найден список домашних заданий. Ответ: {response}'
+        )
     if not isinstance(response['homeworks'], list):
         raise TypeError(f'Получен {type(response)}, а ожидался список.')
 
@@ -105,6 +114,8 @@ def parse_status(homework):
     if "homework_name" not in homework:
         raise HomeworkNameNotFound('Не найдено название работы.')
     homework_name = homework['homework_name']
+    if 'status' not in homework:
+        raise StatusNotFound('Ключ "status" не найден.')
     if homework['status'] not in HOMEWORK_VERDICTS:
         raise UnexpectedHomeworkStatus('Неожиданный статус домашней работы.')
     verdict = HOMEWORK_VERDICTS[homework['status']]
@@ -114,29 +125,33 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-    check_tokens()
+    if not check_tokens():
+        sys.exit('Отсутствует обязательные переменные окружения.')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
-    last_status = None
-    last_response_is_error = False
+    last_message = None
 
     while True:
         try:
             response = get_api_answer(timestamp)
             check_response(response)
-            homework = response['homeworks'][0]
-
-            if homework['status'] != last_status:
-                send_message(bot, parse_status(homework))
-            else:
-                logger.debug('Статус проверки работы не изменен.')
-            last_response_is_error = False
+            if response['homeworks']:
+                homework = response['homeworks'][0]
+                message = parse_status(homework)
+                if message != last_message:
+                    was_sent = send_message(bot, message)
+                    if was_sent:
+                        last_message = message
+                        timestamp = response['current_date']
+                else:
+                    logger.debug('Статус проверки работы не изменен.')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
-            if not last_response_is_error:
-                send_message(bot, message)
-                last_response_is_error = True
+            if message != last_message:
+                was_sent = send_message(bot, message)
+                if was_sent:
+                    last_message = message
 
         time.sleep(RETRY_PERIOD)
 

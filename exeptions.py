@@ -1,18 +1,18 @@
-class EnvironmentVariableNotFound(Exception):
-    pass
-
-
-class EmptyHomework(Exception):
-    pass
+class HomeworksNotFound(Exception):
+    """Не найден список домашних заданий."""
 
 
 class ResponseError(Exception):
-    pass
+    """Ошибка получения ответа от API."""
 
 
 class UnexpectedHomeworkStatus(Exception):
-    pass
+    """Неожиданный статус домашнего задания."""
 
 
 class HomeworkNameNotFound(Exception):
-    pass
+    """Не найдено название домашнего задания."""
+
+
+class StatusNotFound(Exception):
+    """Не найдено статус домашнего задания."""

@@ -151,3 +151,5 @@ posts/static/
 media/
 
 Procfile
+
+for_test.py
